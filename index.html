@@ -849,10 +849,14 @@ function unlockAudio(){
   }
   if(audioCtx.state==='suspended'){
     audioCtx.resume().then(()=>{
-      // iOS 첫 터치 후 BGM이 멈춰있으면 재시작
       if(!_iosUnlocked){
         _iosUnlocked=true;
-        if(!muted&&!bgmRunning) updateBGM();
+        if(!muted&&!bgmRunning){
+          // 타이틀 화면이면 타이틀 BGM, 아니면 게임 BGM
+          let onTitle=document.getElementById('titleScreen').style.display!=='none';
+          if(onTitle) startBGM('title');
+          else updateBGM();
+        }
       }
     });
   } else if(!_iosUnlocked){
@@ -2000,7 +2004,13 @@ function closeRulesOutside(e){
 }
 
 // 타이틀에서 BGM 시작
-window.addEventListener('load',()=>startBGM('title'));
+window.addEventListener('load',()=>{
+  // iOS: AudioContext는 사용자 터치 후에만 작동
+  // → 첫 터치 시 unlockAudio()가 startBGM('title') 호출
+  // Android/PC: 바로 시작
+  let isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if(!isIOS) startBGM('title');
+});
 
 
 /* ── 일시정지 ── */
