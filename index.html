@@ -842,29 +842,36 @@ function getCtx(){
   return audioCtx;
 }
 // iOS Safari AudioContext unlock — 첫 터치에서 반드시 resume
-let _iosUnlocked=false;
+/* ── iOS 오디오 언락 (표준 무음버퍼 방식) ──
+   iOS는 .then() 비동기 안에서 오디오 시작 불가
+   → 터치 핸들러 안에서 무음 버퍼를 즉시 재생해야 함
+*/
+let _audioUnlocked=false;
 function unlockAudio(){
-  if(!audioCtx){
-    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-  }
-  if(audioCtx.state==='suspended'){
-    audioCtx.resume().then(()=>{
-      if(!_iosUnlocked){
-        _iosUnlocked=true;
-        if(!muted&&!bgmRunning){
-          // 타이틀 화면이면 타이틀 BGM, 아니면 게임 BGM
-          let onTitle=document.getElementById('titleScreen').style.display!=='none';
-          if(onTitle) startBGM('title');
-          else updateBGM();
-        }
-      }
-    });
-  } else if(!_iosUnlocked){
-    _iosUnlocked=true;
-  }
+  if(_audioUnlocked)return;
+  try{
+    if(!audioCtx){
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    }
+    // 무음 버퍼 즉시 재생 — iOS 오디오 완전 해제
+    let buf=audioCtx.createBuffer(1,1,22050);
+    let src=audioCtx.createBufferSource();
+    src.buffer=buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
+    // suspended면 동기적으로 resume 요청
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    _audioUnlocked=true;
+    // BGM 시작 — 동기적으로 실행 (iOS에서 중요)
+    if(!muted&&!bgmRunning){
+      let onTitle=document.getElementById('titleScreen').style.display!=='none';
+      if(onTitle) startBGM('title');
+      else updateBGM();
+    }
+  }catch(e){console.warn('[Audio unlock]',e);}
 }
-document.addEventListener('touchstart', unlockAudio, {once:false, passive:true});
-document.addEventListener('touchend',   unlockAudio, {once:false, passive:true});
+document.addEventListener('touchstart', unlockAudio, {passive:true});
+document.addEventListener('touchend',   unlockAudio, {passive:true});
 
 function beep(freq,dur,type='sine',vol=0.18,delay=0){
   if(muted)return;
@@ -2005,11 +2012,9 @@ function closeRulesOutside(e){
 
 // 타이틀에서 BGM 시작
 window.addEventListener('load',()=>{
-  // iOS: AudioContext는 사용자 터치 후에만 작동
-  // → 첫 터치 시 unlockAudio()가 startBGM('title') 호출
-  // Android/PC: 바로 시작
-  let isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent);
-  if(!isIOS) startBGM('title');
+  // BGM은 첫 터치(unlockAudio) 후 시작
+  // Android/PC는 click 이벤트도 등록
+  document.addEventListener('click', unlockAudio, {passive:true});
 });
 
 
@@ -2039,14 +2044,6 @@ function pauseGoTitle(){
 
 
 </script>
-  <script>
-    if('serviceWorker' in navigator){
-      window.addEventListener('load',()=>{
-        navigator.serviceWorker.register('./sw.js')
-          .then(r=>console.log('[PWA]',r.scope))
-          .catch(e=>console.warn('[PWA]',e));
-      });
-    }
-  </script>
+  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));}</script>
 </body>
 </html>
